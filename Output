@@ -1,0 +1,19 @@
+
+--- Starting Simulation ---
+Agent A1 (A) initialized at (-10, 5)
+Agent A2 (A) initialized at (-15, -5)
+Agent B1 (B) initialized at (10, 0)
+
+Scenario 1: Agent A1 has the ball, close to opponent goal
+Agent A1 (A): SHOOTS towards (50, 0)!
+
+Scenario 2: Agent B1 (opponent) has the ball, agent A1 needs to tackle
+Agent A1 (A): TACKLES opponent B1 to win ball!
+
+Scenario 3: Ball is loose, agent A2 needs to get it
+Agent A2 (A): MOVING to gain possession of ball at (-5, -2).
+
+Scenario 4: Agent A1 has ball, A2 is better positioned for a pass
+Agent A1 (A): PASSES to teammate A2!
+
+--- Simulation End ---
