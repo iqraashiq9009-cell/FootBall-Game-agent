@@ -1,0 +1,195 @@
+import math
+
+# --- Helper Functions (Environment Simulation) ---
+
+def calculate_distance(pos1, pos2):
+    """Calculates the Euclidean distance between two points."""
+    return math.sqrt((pos1[0] - pos2[0])**2 + (pos1[1] - pos2[1])**2)
+
+class FootballEnvironment:
+    """A simplified football environment."""
+    def __init__(self):
+        self.ball_position = (0, 0)
+        self.player_positions = {}
+        self.opponent_goal = (50, 0) # Example: opponent's goal at x=50, y=0
+        self.own_goal = (-50, 0)    # Example: own goal at x=-50, y=0
+        self.ball_owner = None # Player ID who has the ball, or None
+
+    def update_ball_position(self, x, y, owner=None):
+        self.ball_position = (x, y)
+        self.ball_owner = owner
+
+    def update_player_position(self, player_id, x, y):
+        self.player_positions[player_id] = (x, y)
+
+    def get_state(self):
+        """Returns the current state of the environment."""
+        return {
+            'ball_position': self.ball_position,
+            'player_positions': self.player_positions,
+            'opponent_goal': self.opponent_goal,
+            'own_goal': self.own_goal,
+            'ball_owner': self.ball_owner
+        }
+
+# --- Football Player Agent Class ---
+
+class FootballPlayerAgent:
+    """A simplified PEAS agent for a football player."""
+
+    def __init__(self, agent_id, team_id, initial_position):
+        self.agent_id = agent_id
+        self.team_id = team_id
+        self.position = initial_position
+        self.has_ball = False
+        print(f"Agent {self.agent_id} ({self.team_id}) initialized at {self.position}")
+
+    def perceive(self, environment_state):
+        """Gathers information from the environment state."""
+        self.ball_position = environment_state['ball_position']
+        self.all_player_positions = environment_state['player_positions']
+        self.opponent_goal = environment_state['opponent_goal']
+        self.own_goal = environment_state['own_goal']
+        self.ball_owner = environment_state['ball_owner']
+        self.position = self.all_player_positions.get(self.agent_id, self.position) # Update own position
+
+        # Determine if the agent has the ball
+        self.has_ball = (self.ball_owner == self.agent_id)
+
+        # For simplicity, we assume other players are teammates if not self and same team, else opponents
+        self.teammate_positions = {pid: pos for pid, pos in self.all_player_positions.items()
+                                   if pid != self.agent_id and self.get_team_from_player_id(pid) == self.team_id}
+        self.opponent_positions = {pid: pos for pid, pos in self.all_player_positions.items()
+                                   if self.get_team_from_player_id(pid) != self.team_id}
+
+        # print(f"Agent {self.agent_id} perceived: Ball at {self.ball_position}, Has Ball: {self.has_ball}")
+
+    def get_team_from_player_id(self, player_id):
+        # A very basic way to infer team from player ID (e.g., 'A1' is team A, 'B1' is team B)
+        return player_id[0] # Assuming player_id like 'A1', 'B2'
+
+    def act(self):
+        """Decides and performs an action based on perceived state."""
+        action = "idle"
+        action_target = None
+
+        if self.has_ball:
+            # Try to shoot
+            dist_to_opponent_goal = calculate_distance(self.position, self.opponent_goal)
+            if dist_to_opponent_goal < 15: # Arbitrary shooting range
+                action = "shoot"
+                action_target = self.opponent_goal
+            else:
+                # Try to pass to a teammate
+                best_teammate_for_pass = None
+                min_dist_to_goal = float('inf')
+                for tid, tpos in self.teammate_positions.items():
+                    dist_t_to_goal = calculate_distance(tpos, self.opponent_goal)
+                    # Simple heuristic: pass to teammate closer to goal and further from opponents
+                    # This is highly simplified
+                    if dist_t_to_goal < min_dist_to_goal:
+                        min_dist_to_goal = dist_t_to_goal
+                        best_teammate_for_pass = tid
+                
+                if best_teammate_for_pass and min_dist_to_goal < dist_to_opponent_goal - 5: # Teammate is significantly better positioned
+                    action = "pass"
+                    action_target = best_teammate_for_pass
+                else:
+                    # Dribble or move to a better position
+                    action = "dribble/move"
+                    action_target = self.opponent_goal # Towards opponent goal
+        else: # Does not have the ball
+            dist_to_ball = calculate_distance(self.position, self.ball_position)
+            
+            if self.ball_owner and self.get_team_from_player_id(self.ball_owner) != self.team_id: # Opponent has the ball
+                if dist_to_ball < 5: # Within tackling/intercepting range
+                    action = "tackle"
+                    action_target = self.ball_owner
+                else:
+                    action = "move_to_intercept"
+                    action_target = self.ball_position
+            elif self.ball_owner is None: # Ball is loose
+                 if dist_to_ball < 5:
+                    action = "gain_possession"
+                    action_target = self.ball_position
+                 else:
+                    action = "move_to_ball"
+                    action_target = self.ball_position
+            else: # Teammate has the ball or ball owner is self (covered by has_ball)
+                # Move to support or find open space
+                action = "find_open_space"
+                action_target = (self.opponent_goal[0] * 0.7, self.opponent_goal[1]) # Example: move towards offensive half
+
+        self._perform_physical_action(action, action_target)
+        return action, action_target
+
+    def _perform_physical_action(self, action, target):
+        """Simulates the physical execution of an action (prints to console)."""
+        if action == "shoot":
+            print(f"Agent {self.agent_id} ({self.team_id}): SHOOTS towards {target}!")
+        elif action == "pass":
+            print(f"Agent {self.agent_id} ({self.team_id}): PASSES to teammate {target}!")
+        elif action == "dribble/move":
+            print(f"Agent {self.agent_id} ({self.team_id}): DRIBBLING / MOVING towards {target}.")
+        elif action == "tackle":
+            print(f"Agent {self.agent_id} ({self.team_id}): TACKLES opponent {target} to win ball!")
+        elif action == "move_to_intercept":
+            print(f"Agent {self.agent_id} ({self.team_id}): MOVING to intercept ball at {target}.")
+        elif action == "move_to_ball" or action == "gain_possession":
+            print(f"Agent {self.agent_id} ({self.team_id}): MOVING to gain possession of ball at {target}.")
+        elif action == "find_open_space":
+            print(f"Agent {self.agent_id} ({self.team_id}): FINDING OPEN SPACE towards {target}.")
+        else:
+            print(f"Agent {self.agent_id} ({self.team_id}): {action.upper()} (No specific action)." if target else f"Agent {self.agent_id} ({self.team_id}): {action.upper()}")
+
+# --- Simulation Example ---
+
+print("\n--- Starting Simulation ---")
+
+env = FootballEnvironment()
+
+# Create agents
+agent_A1 = FootballPlayerAgent(agent_id='A1', team_id='A', initial_position=(-10, 5))
+agent_A2 = FootballPlayerAgent(agent_id='A2', team_id='A', initial_position=(-15, -5))
+agent_B1 = FootballPlayerAgent(agent_id='B1', team_id='B', initial_position=(10, 0))
+
+# Initial player positions in environment
+env.update_player_position('A1', -10, 5)
+env.update_player_position('A2', -15, -5)
+env.update_player_position('B1', 10, 0)
+
+# Scenario 1: Agent A1 has the ball, close to opponent goal
+print("\nScenario 1: Agent A1 has the ball, close to opponent goal")
+env.update_ball_position(x=40, y=2, owner='A1')
+env.update_player_position('A1', 40, 2)
+
+agent_A1.perceive(env.get_state())
+agent_A1.act()
+
+# Scenario 2: Agent B1 (opponent) has the ball, agent A1 needs to tackle
+print("\nScenario 2: Agent B1 (opponent) has the ball, agent A1 needs to tackle")
+env.update_ball_position(x=5, y=0, owner='B1')
+env.update_player_position('B1', 5, 0)
+env.update_player_position('A1', 4, 1) # A1 is close to B1
+
+agent_A1.perceive(env.get_state())
+agent_A1.act()
+
+# Scenario 3: Ball is loose, agent A2 needs to get it
+print("\nScenario 3: Ball is loose, agent A2 needs to get it")
+env.update_ball_position(x=-5, y=-2, owner=None)
+env.update_player_position('A2', -6, -1)
+
+agent_A2.perceive(env.get_state())
+agent_A2.act()
+
+# Scenario 4: Agent A1 has ball, but A2 is better positioned for a pass
+print("\nScenario 4: Agent A1 has ball, A2 is better positioned for a pass")
+env.update_ball_position(x=20, y=10, owner='A1')
+env.update_player_position('A1', 20, 10)
+env.update_player_position('A2', 35, 5) # A2 is closer to goal
+
+agent_A1.perceive(env.get_state())
+agent_A1.act()
+
+print("\n--- Simulation End ---")
